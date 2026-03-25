@@ -38,11 +38,6 @@ Unlike random noise, Ornstein-Uhlenbeck motion always pulls back toward center â
 2. Drag into your TouchDesigner project
 3. Wire the CHOP output to whatever needs motion
 
-## Requirements
-
-- TouchDesigner **2023.11000+** (any recent build)
-- Windows or macOS
-
 ## License
 
 [MIT](LICENSE) â€” use it however you want.

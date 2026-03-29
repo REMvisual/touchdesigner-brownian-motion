@@ -12,3 +12,7 @@ ov.conf
 .openviking/
 .claude/settings.local.json
 .claude/handoffs/
+CLAUDE.md
+AGENTS.md
+.beads/
+.claude/

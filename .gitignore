@@ -7,3 +7,6 @@ __pycache__/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+.beads/.beads-credential-key
+ov.conf
+.openviking/

@@ -97,14 +97,7 @@ class BrownianMotion:
         if sim_dt <= 0.0:
             return
 
-        # ── OU substeps (speed-scaled time) ──
-        # Sub-steps keep dt <= 1/120s for numerical stability
-        max_step = 1.0 / 120.0
-        steps = max(1, math.ceil(sim_dt / max_step))
-        sub_dt = sim_dt / steps
-        sqrt_sub_dt = math.sqrt(sub_dt)
-
-        # OU sigma tuned so stationary std-dev ~ 0.55
+        # ── OU step (exact transition, Gillespie 1996) ──
         theta = max(center_pull, 0.0)
         sigma = 0.55 * math.sqrt(2.0 * theta) if theta > 0.0 else 0.55
 
@@ -113,24 +106,29 @@ class BrownianMotion:
         cy = max(-1.0, min(1.0, anchor[1]))
         cz = max(-1.0, min(1.0, anchor[2]))
 
-        for _ in range(steps):
-            # Gaussian noise
-            if independent_axes:
-                nx = self._box_muller()
-                ny = self._box_muller()
-                nz = self._box_muller()
-            else:
-                nx = ny = nz = self._box_muller()
+        if theta > 0.0:
+            decay = math.exp(-theta * sim_dt)
+            # Exact conditional variance: sigma^2 * (1 - exp(-2*theta*dt)) / (2*theta)
+            exact_std = sigma * math.sqrt((1.0 - math.exp(-2.0 * theta * sim_dt)) / (2.0 * theta))
+        else:
+            decay = 1.0
+            exact_std = sigma * math.sqrt(sim_dt)
 
-            # OU step: dx = theta*(mu - x)*dt + sigma*sqrt(dt)*N(0,1)
-            self.ou_state[0] += theta * (cx - self.ou_state[0]) * sub_dt + sigma * sqrt_sub_dt * nx
-            self.ou_state[1] += theta * (cy - self.ou_state[1]) * sub_dt + sigma * sqrt_sub_dt * ny
-            self.ou_state[2] += theta * (cz - self.ou_state[2]) * sub_dt + sigma * sqrt_sub_dt * nz
+        # Gaussian noise
+        if independent_axes:
+            nx, ny, nz = self._box_muller(), self._box_muller(), self._box_muller()
+        else:
+            nx = self._box_muller()
+            ny, nz = nx, nx
 
-            # Hard clamp to [-1, 1]
-            self.ou_state[0] = max(-1.0, min(1.0, self.ou_state[0]))
-            self.ou_state[1] = max(-1.0, min(1.0, self.ou_state[1]))
-            self.ou_state[2] = max(-1.0, min(1.0, self.ou_state[2]))
+        # Exact OU transition
+        self.ou_state[0] = cx + (self.ou_state[0] - cx) * decay + exact_std * nx
+        self.ou_state[1] = cy + (self.ou_state[1] - cy) * decay + exact_std * ny
+        self.ou_state[2] = cz + (self.ou_state[2] - cz) * decay + exact_std * nz
+
+        # Hard clamp to [-1, 1]
+        for ax in range(3):
+            self.ou_state[ax] = max(-1.0, min(1.0, self.ou_state[ax]))
 
         # ── Spring filter (real frame time, NOT speed-scaled) ──
         # The spring is a display-side low-pass filter. It runs at real
@@ -147,6 +145,7 @@ class BrownianMotion:
             damping = 2.0 * omega
 
             # Substep the spring with real dt for integration stability
+            max_step = 1.0 / 120.0
             spring_steps = max(1, math.ceil(dt / max_step))
             spring_dt = dt / spring_steps
             for _ in range(spring_steps):

@@ -429,3 +429,20 @@ def test_reset_at_anchor():
     bm.reset()
     assert bm.ou_state == [0.5, -0.3, 0.7]
     assert bm.smoothed_state == [0.5, -0.3, 0.7]
+
+
+# ---------------------------------------------------------------------------
+# 22. Exact OU Stationary Distribution — std ~0.55 regardless of theta
+# ---------------------------------------------------------------------------
+def test_exact_ou_stationary_distribution():
+    """Verify the OU process reaches correct stationary distribution."""
+    bm = BrownianMotion(seed=123)
+    samples = []
+    for _ in range(10000):
+        bm.step(DT, center_pull=5.0, smoothing=0.0)  # raw OU, no spring
+        samples.append(bm.ou_state[0])
+    mean = sum(samples) / len(samples)
+    std = (sum((s - mean)**2 for s in samples) / len(samples)) ** 0.5
+    # Stationary std should be ~0.55 regardless of theta
+    assert abs(std - 0.55) < 0.1, f"Std {std} not near 0.55"
+    assert abs(mean) < 0.15, f"Mean {mean} not near 0"

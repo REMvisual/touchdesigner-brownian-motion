@@ -46,6 +46,14 @@ class BrownianMotion:
         self._detail_states = [[0.0] * 5 for _ in range(3)]  # max 5 layers, 3 axes
         self._detail_counters = [[0] * 5 for _ in range(3)]
 
+        # Rotation OU state (anchor is always zero for rotation)
+        self.rot_ou_state = [0.0, 0.0, 0.0]
+        self.rot_smoothed_state = [0.0, 0.0, 0.0]
+        self.rot_spring_vel = [0.0, 0.0, 0.0]
+        self.rot_smoothed_speed = 1.0
+        self._rot_detail_states = [[0.0] * 5 for _ in range(3)]
+        self._rot_detail_counters = [[0] * 5 for _ in range(3)]
+
     def reset(self, anchor=None):
         """Reset all state to anchor position."""
         if anchor is not None:
@@ -58,6 +66,13 @@ class BrownianMotion:
         self._spare = 0.0
         self._detail_states = [[0.0] * 5 for _ in range(3)]
         self._detail_counters = [[0] * 5 for _ in range(3)]
+        # Reset rotation
+        self.rot_ou_state = [0.0, 0.0, 0.0]
+        self.rot_smoothed_state = [0.0, 0.0, 0.0]
+        self.rot_spring_vel = [0.0, 0.0, 0.0]
+        self.rot_smoothed_speed = 1.0
+        self._rot_detail_states = [[0.0] * 5 for _ in range(3)]
+        self._rot_detail_counters = [[0] * 5 for _ in range(3)]
 
     def _box_muller(self):
         """Box-Muller transform — returns one Gaussian sample N(0,1)."""
@@ -187,6 +202,107 @@ class BrownianMotion:
         # Safety clamp
         for ax in range(3):
             self.smoothed_state[ax] = max(-1.0, min(1.0, self.smoothed_state[ax]))
+
+    def step_rotation(self, dt, rotation_speed=1.0, center_pull=2.0, smoothing=0.5,
+                      pitch=0.0, yaw=0.0, roll=0.0, detail=0.0, detail_layers=3):
+        """
+        Step the rotation OU process. Returns (rx, ry, rz) in degrees.
+
+        Shares center_pull and smoothing with position but has independent speed
+        and per-axis amplitude. Rotation anchor is always zero (mean-reverts to
+        no-rotation).
+
+        Args:
+            dt: Real delta-time in seconds.
+            rotation_speed: Time-scale multiplier for rotation.
+            center_pull: Mean-reversion strength (shared with position).
+            smoothing: Spring smoothing (shared with position).
+            pitch: Amplitude in degrees for X rotation. 0 = disabled.
+            yaw: Amplitude in degrees for Y rotation. 0 = disabled.
+            roll: Amplitude in degrees for Z rotation. 0 = disabled.
+            detail: Fractal detail amount (0-1).
+            detail_layers: Number of Voss-McCartney layers (1-5).
+        """
+        roughness = 1.0 - smoothing
+
+        # Smooth rotation speed
+        self.rot_smoothed_speed += (rotation_speed - self.rot_smoothed_speed) * (
+            1.0 - math.exp(-dt * 3.0))
+
+        sim_dt = dt * max(self.rot_smoothed_speed, 0.0)
+        if sim_dt <= 0.0:
+            return (0.0, 0.0, 0.0)
+
+        theta = max(center_pull, 0.0)
+        sigma = 0.55 * math.sqrt(2.0 * theta) if theta > 0.0 else 0.55
+
+        # Exact OU transition (rotation anchor is always zero)
+        if theta > 0.0:
+            decay = math.exp(-theta * sim_dt)
+            exact_std = sigma * math.sqrt(
+                (1.0 - math.exp(-2.0 * theta * sim_dt)) / (2.0 * theta))
+        else:
+            decay = 1.0
+            exact_std = sigma * math.sqrt(sim_dt)
+
+        nx, ny, nz = self._box_muller(), self._box_muller(), self._box_muller()
+
+        self.rot_ou_state[0] = self.rot_ou_state[0] * decay + exact_std * nx
+        self.rot_ou_state[1] = self.rot_ou_state[1] * decay + exact_std * ny
+        self.rot_ou_state[2] = self.rot_ou_state[2] * decay + exact_std * nz
+
+        for ax in range(3):
+            self.rot_ou_state[ax] = max(-1.0, min(1.0, self.rot_ou_state[ax]))
+
+        # Implicit spring
+        bypass_spring = (roughness >= 1.0)
+        if bypass_spring:
+            self.rot_smoothed_state = list(self.rot_ou_state)
+            self.rot_spring_vel = [0.0, 0.0, 0.0]
+        else:
+            spring_speed = math.sqrt(max(self.rot_smoothed_speed, 1.0))
+            omega = 2.0 * math.exp(roughness * 3.2) * spring_speed
+            for ax in range(3):
+                n1 = self.rot_spring_vel[ax] - (
+                    self.rot_smoothed_state[ax] - self.rot_ou_state[ax]) * (omega * omega * dt)
+                n2 = 1.0 + omega * dt
+                self.rot_spring_vel[ax] = n1 / (n2 * n2)
+                self.rot_smoothed_state[ax] += self.rot_spring_vel[ax] * dt
+
+        # Voss-McCartney detail for rotation
+        if detail > 0.0:
+            layer_theta = 4.0
+            layer_sigma = 0.55 * math.sqrt(2.0 * layer_theta)
+
+            for ax in range(3):
+                layer_sum = 0.0
+                amp = 0.5
+                for layer in range(min(detail_layers, 5)):
+                    self._rot_detail_counters[ax][layer] += 1
+                    update_interval = 1 << layer
+                    if self._rot_detail_counters[ax][layer] >= update_interval:
+                        self._rot_detail_counters[ax][layer] = 0
+                        accumulated_dt = sim_dt * update_interval
+                        if accumulated_dt > 0.0:
+                            d_decay = math.exp(-layer_theta * accumulated_dt)
+                            d_std = layer_sigma * math.sqrt(
+                                (1.0 - math.exp(-2.0 * layer_theta * accumulated_dt))
+                                / (2.0 * layer_theta))
+                            self._rot_detail_states[ax][layer] = (
+                                self._rot_detail_states[ax][layer] * d_decay
+                                + d_std * self._box_muller())
+                            self._rot_detail_states[ax][layer] = max(-1.0, min(1.0,
+                                self._rot_detail_states[ax][layer]))
+                    layer_sum += amp * self._rot_detail_states[ax][layer]
+                    amp *= 0.5
+                self.rot_smoothed_state[ax] += layer_sum * detail * 0.3
+
+        for ax in range(3):
+            self.rot_smoothed_state[ax] = max(-1.0, min(1.0, self.rot_smoothed_state[ax]))
+
+        # Map to degrees — amplitude per axis (0 = disabled)
+        amplitudes = [pitch, yaw, roll]
+        return tuple(self.rot_smoothed_state[ax] * amplitudes[ax] for ax in range(3))
 
     def map_offset(self, amplitude=1.0, range_min=-100.0, range_max=100.0,
                    affect=(True, True, True), per_axis_range=False,
@@ -320,6 +436,40 @@ def onSetupParameters(scriptOp):
     scriptOp.par.Rangeminz.enableExpr = 'me.par.Peraxisrange and me.par.Affectz'
     scriptOp.par.Rangemaxz.enableExpr = 'me.par.Peraxisrange and me.par.Affectz'
 
+    # ── Rotation ──
+    page_rot = scriptOp.appendCustomPage('Rotation')
+    page_rot.appendToggle('Enablerotation', label='Enable Rotation')
+    page_rot.appendFloat('Rotationspeed', label='Rotation Speed')
+    page_rot.appendFloat('Rotationpitch', label='Pitch')
+    page_rot.appendFloat('Rotationyaw', label='Yaw')
+    page_rot.appendFloat('Rotationroll', label='Roll')
+
+    scriptOp.par.Enablerotation.default = False
+
+    scriptOp.par.Rotationspeed.default = 1.0
+    scriptOp.par.Rotationspeed.min = 0.0
+    scriptOp.par.Rotationspeed.max = 10.0
+    scriptOp.par.Rotationspeed.clampMin = True
+    scriptOp.par.Rotationspeed.clampMax = False
+
+    scriptOp.par.Rotationpitch.default = 0.0
+    scriptOp.par.Rotationpitch.min = -180.0
+    scriptOp.par.Rotationpitch.max = 180.0
+    scriptOp.par.Rotationpitch.clampMin = False
+    scriptOp.par.Rotationpitch.clampMax = False
+
+    scriptOp.par.Rotationyaw.default = 0.0
+    scriptOp.par.Rotationyaw.min = -180.0
+    scriptOp.par.Rotationyaw.max = 180.0
+    scriptOp.par.Rotationyaw.clampMin = False
+    scriptOp.par.Rotationyaw.clampMax = False
+
+    scriptOp.par.Rotationroll.default = 0.0
+    scriptOp.par.Rotationroll.min = -180.0
+    scriptOp.par.Rotationroll.max = 180.0
+    scriptOp.par.Rotationroll.clampMin = False
+    scriptOp.par.Rotationroll.clampMax = False
+
     # ── Axes ──
     page3 = scriptOp.appendCustomPage('Axes')
     page3.appendToggle('Affectx', label='Affect X')
@@ -435,11 +585,28 @@ def onCook(scriptOp):
             per_axis_range=False,
         )
 
-    # Output channels
+    # Always output 6 channels (zeros when rotation disabled) for stable downstream refs
     scriptOp.clear()
     scriptOp.appendChan('tx')[0] = tx
     scriptOp.appendChan('ty')[0] = ty
     scriptOp.appendChan('tz')[0] = tz
+
+    rotation_enabled = bool(scriptOp.par.Enablerotation.eval())
+    if rotation_enabled:
+        rot_speed = scriptOp.par.Rotationspeed.eval()
+        pitch = scriptOp.par.Rotationpitch.eval()
+        yaw = scriptOp.par.Rotationyaw.eval()
+        roll = scriptOp.par.Rotationroll.eval()
+        rx, ry, rz = bm.step_rotation(dt, rotation_speed=rot_speed,
+                                        center_pull=center_pull, smoothing=smoothing,
+                                        pitch=pitch, yaw=yaw, roll=roll,
+                                        detail=detail, detail_layers=detail_layers)
+    else:
+        rx, ry, rz = 0.0, 0.0, 0.0
+
+    scriptOp.appendChan('rx')[0] = rx
+    scriptOp.appendChan('ry')[0] = ry
+    scriptOp.appendChan('rz')[0] = rz
 
 
 def onPulse(par):

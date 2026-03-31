@@ -462,3 +462,50 @@ def test_fractal_detail():
     # Both should stay in range
     for ax in range(3):
         assert -1.0 <= bm_yes.smoothed_state[ax] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# 24. Rotation Output — pitch and yaw produce motion, zero roll stays zero
+# ---------------------------------------------------------------------------
+def test_rotation_output():
+    bm = BrownianMotion(seed=42)
+    for _ in range(100):
+        bm.step(DT, center_pull=2.0, smoothing=0.5)
+        rx, ry, rz = bm.step_rotation(DT, rotation_speed=1.0,
+                                        center_pull=2.0, smoothing=0.5,
+                                        pitch=10.0, yaw=15.0, roll=0.0)
+    # Pitch and yaw should have moved, roll should be zero
+    assert abs(rx) > 0.01 or abs(ry) > 0.01
+    assert rz == 0.0  # roll amplitude is 0
+
+
+# ---------------------------------------------------------------------------
+# 25. Rotation Range — stays within amplitude bounds
+# ---------------------------------------------------------------------------
+def test_rotation_range():
+    bm = BrownianMotion(seed=42)
+    max_rx = 0.0
+    for _ in range(2000):
+        bm.step(DT, center_pull=2.0, smoothing=0.0)
+        rx, ry, rz = bm.step_rotation(DT, rotation_speed=1.0,
+                                        center_pull=2.0, smoothing=0.0,
+                                        pitch=10.0, yaw=10.0, roll=10.0)
+        max_rx = max(max_rx, abs(rx))
+    assert max_rx <= 10.0, f"Rotation exceeded amplitude: {max_rx}"
+
+
+# ---------------------------------------------------------------------------
+# 26. Rotation Reset — rotation state zeroed on reset
+# ---------------------------------------------------------------------------
+def test_rotation_reset():
+    bm = BrownianMotion(seed=42)
+    for _ in range(100):
+        bm.step(DT, center_pull=2.0, smoothing=0.5)
+        bm.step_rotation(DT, rotation_speed=1.0, center_pull=2.0,
+                         smoothing=0.5, pitch=10.0, yaw=10.0, roll=10.0)
+    # Should have non-zero rotation state
+    assert any(v != 0.0 for v in bm.rot_smoothed_state), "Rotation should have moved"
+    bm.reset()
+    assert bm.rot_ou_state == [0.0, 0.0, 0.0]
+    assert bm.rot_smoothed_state == [0.0, 0.0, 0.0]
+    assert bm.rot_spring_vel == [0.0, 0.0, 0.0]

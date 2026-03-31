@@ -130,29 +130,23 @@ class BrownianMotion:
         for ax in range(3):
             self.ou_state[ax] = max(-1.0, min(1.0, self.ou_state[ax]))
 
-        # ── Spring filter (real frame time, NOT speed-scaled) ──
-        # The spring is a display-side low-pass filter. It runs at real
-        # time so output stays smooth regardless of OU speed.
-        # Roughness controls cutoff: 0 = ~2s settling, 1 = raw OU.
+        # ── Spring filter (real frame time, implicit integration) ──
+        # Unconditionally stable — no substeps needed regardless of dt or omega.
         bypass_spring = (roughness >= 1.0)
+
         if bypass_spring:
             self.smoothed_state = list(self.ou_state)
             self.spring_vel = [0.0, 0.0, 0.0]
         else:
             spring_speed = math.sqrt(max(self.smoothed_speed, 1.0))
             omega = 2.0 * math.exp(roughness * 3.2) * spring_speed
-            omega_sq = omega * omega
-            damping = 2.0 * omega
 
-            # Substep the spring with real dt for integration stability
-            max_step = 1.0 / 120.0
-            spring_steps = max(1, math.ceil(dt / max_step))
-            spring_dt = dt / spring_steps
-            for _ in range(spring_steps):
-                for ax in range(3):
-                    self.spring_vel[ax] += (omega_sq * (self.ou_state[ax] - self.smoothed_state[ax])
-                                            - damping * self.spring_vel[ax]) * spring_dt
-                    self.smoothed_state[ax] += self.spring_vel[ax] * spring_dt
+            # Implicit spring (Klak-style, unconditionally stable)
+            for ax in range(3):
+                n1 = self.spring_vel[ax] - (self.smoothed_state[ax] - self.ou_state[ax]) * (omega * omega * dt)
+                n2 = 1.0 + omega * dt
+                self.spring_vel[ax] = n1 / (n2 * n2)
+                self.smoothed_state[ax] += self.spring_vel[ax] * dt
 
         # Safety clamp
         for ax in range(3):

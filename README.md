@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner-1280x640.png" alt="Brownian Motion" width="100%">
+  <img src="https://github.com/REMvisual/td-BrownianMotion/releases/download/v2.0.0/banner-1280x640.png" alt="Brownian Motion" width="100%">
 </p>
 
 [![Download Latest](https://img.shields.io/github/v/release/REMvisual/td-BrownianMotion?style=for-the-badge&label=Download&color=blue)](https://github.com/REMvisual/td-BrownianMotion/releases/latest)

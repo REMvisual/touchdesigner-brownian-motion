@@ -3,8 +3,8 @@
 </p>
 
 
-[![Download Latest](https://img.shields.io/github/v/release/REMvisual/claude-handoff?style=for-the-badge&label=Download&color=blue)](https://github.com/REMvisual/claude-handoff/releases/latest)
-![Views](https://komarev.com/ghpvc/?username=REMvisual-handoff&label=Views&color=brightgreen&style=for-the-badge)
+[![Download Latest](https://img.shields.io/github/v/release/REMvisual/td-BrownianMotion?style=for-the-badge&label=Download&color=blue)](https://github.com/REMvisual/claude-handoff/releases/latest)
+![Views](https://komarev.com/ghpvc/?username=REMvisual-td-BrownianMotion&label=Views&color=brightgreen&style=for-the-badge)
 
 
 

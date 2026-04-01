@@ -106,14 +106,21 @@ class BrownianMotion:
             anchor: Bias per axis, each in [-1, 1].
             independent_axes: If True, each axis gets independent noise.
         """
+        # dt=0 means timeline is paused — freeze everything
+        if dt <= 0.0:
+            return
+
         # Smoothing is user-facing (1=smooth, 0=raw). Internally we use roughness (0=smooth, 1=raw).
         roughness = 1.0 - smoothing
 
         # Store anchor for reset
         self._anchor = list(anchor)
 
-        # Smooth speed changes (~0.3s settling)
-        self.smoothed_speed += (speed - self.smoothed_speed) * (1.0 - math.exp(-dt * 3.0))
+        # Smooth speed changes (~0.3s settling), but speed=0 stops immediately
+        if speed <= 0.0:
+            self.smoothed_speed = 0.0
+        else:
+            self.smoothed_speed += (speed - self.smoothed_speed) * (1.0 - math.exp(-dt * 3.0))
 
         sim_dt = dt * max(self.smoothed_speed, 0.0)
         if sim_dt <= 0.0:
@@ -182,7 +189,7 @@ class BrownianMotion:
                     amp *= 0.5
                 # Add detail to OU state so the spring filters it
                 self.ou_state[ax] = max(-1.0, min(1.0,
-                    self.ou_state[ax] + layer_sum * detail * 0.15))
+                    self.ou_state[ax] + layer_sum * detail * 0.35))
 
         # ── Spring filter (real frame time, implicit integration) ──
         # Narrowed omega range: exponent 2.0 (was 3.2), roughness capped at 0.85.
@@ -224,11 +231,17 @@ class BrownianMotion:
             detail: Fractal detail amount (0-1).
             detail_layers: Number of Voss-McCartney layers (1-5).
         """
+        if dt <= 0.0:
+            return (0.0, 0.0, 0.0)
+
         roughness = 1.0 - smoothing
 
-        # Smooth rotation speed
-        self.rot_smoothed_speed += (rotation_speed - self.rot_smoothed_speed) * (
-            1.0 - math.exp(-dt * 3.0))
+        # Smooth rotation speed, but 0 stops immediately
+        if rotation_speed <= 0.0:
+            self.rot_smoothed_speed = 0.0
+        else:
+            self.rot_smoothed_speed += (rotation_speed - self.rot_smoothed_speed) * (
+                1.0 - math.exp(-dt * 3.0))
 
         sim_dt = dt * max(self.rot_smoothed_speed, 0.0)
         if sim_dt <= 0.0:
@@ -281,7 +294,7 @@ class BrownianMotion:
                     layer_sum += amp * self._rot_detail_states[ax][layer]
                     amp *= 0.5
                 self.rot_ou_state[ax] = max(-1.0, min(1.0,
-                    self.rot_ou_state[ax] + layer_sum * detail * 0.15))
+                    self.rot_ou_state[ax] + layer_sum * detail * 0.35))
 
         # Spring (narrowed omega range, roughness capped at 0.85)
         roughness = min(roughness, 0.85)
@@ -534,7 +547,17 @@ def onCook(scriptOp):
     # Read absTime.frame to create a per-frame cook dependency
     # (store/fetch was the loop cause, not absTime itself)
     _ = absTime.frame
-    dt = absTime.stepSeconds if absTime.stepSeconds > 0 else 1.0 / me.time.rate
+    # Use stepSeconds directly. When TD is paused, stepSeconds=0 → dt=0 → motion freezes.
+    # Only use fallback on the very first cook (stepSeconds can be 0 before first frame).
+    dt = absTime.stepSeconds
+    if dt <= 0.0:
+        # Check if timeline is actually running — if paused, dt stays 0 (freeze).
+        # On first cook, stepSeconds may be 0 but timeline is running, so use frame rate.
+        if not hasattr(onCook, '_first_cook_done'):
+            onCook._first_cook_done = True
+            dt = 1.0 / me.time.rate
+        else:
+            dt = 0.0  # paused or zero-time — freeze everything
 
     # Read parameters via .eval() — safe on own custom pars
     speed = scriptOp.par.Speed.eval()

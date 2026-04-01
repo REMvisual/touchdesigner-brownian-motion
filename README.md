@@ -1,9 +1,7 @@
-<p align="center">
-  <img src="assets/banner-1280x640.png" alt="Brownian Motion" width="100%">
-</p>
+# Brownian Motion v2.0
 
-
-[![Download Latest](https://img.shields.io/github/v/release/REMvisual/td-BrownianMotion?style=for-the-badge&label=Download&color=blue)](https://github.com/REMvisual/claude-handoff/releases/latest)
+[![Download Latest](https://img.shields.io/github/v/release/REMvisual/td-BrownianMotion?style=for-the-badge&label=Download&color=blue)](https://github.com/REMvisual/td-BrownianMotion/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/REMvisual/td-BrownianMotion/total?style=for-the-badge)](https://github.com/REMvisual/td-BrownianMotion/releases)
 ![Views](https://komarev.com/ghpvc/?username=REMvisual-td-BrownianMotion&label=Views&color=brightgreen&style=for-the-badge)
 
 

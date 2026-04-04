@@ -3,13 +3,10 @@
 </p>
 
 [![Download Latest](https://img.shields.io/github/v/release/REMvisual/td-BrownianMotion?style=for-the-badge&label=Download&color=blue)](https://github.com/REMvisual/td-BrownianMotion/releases/latest)
-[![Gumroad](https://img.shields.io/badge/Gumroad-Free-ff90e8?style=for-the-badge&logo=gumroad&logoColor=white)](https://remrepo.gumroad.com)
 [![Downloads](https://img.shields.io/github/downloads/REMvisual/td-BrownianMotion/total?style=for-the-badge)](https://github.com/REMvisual/td-BrownianMotion/releases)
 ![Views](https://komarev.com/ghpvc/?username=REMvisual-td-BrownianMotion&label=Views&color=brightgreen&style=for-the-badge)
 
 Ornstein-Uhlenbeck brownian motion for TouchDesigner. A Script CHOP that generates smooth, mean-reverting procedural noise with rotation support and fractal detail — perfect for organic camera drift, floating objects, generative motion, and anything that needs to feel alive.
-
-Also available as an [Unreal Engine 5 plugin](https://github.com/REMvisual/BrownianMotion). More tools at [remrepo.com](https://remrepo.com).
 
 ## What It Does
 
@@ -103,10 +100,6 @@ pos += vel * dt
 ```
 
 Unconditionally stable at any timestep. Omega scales with `sqrt(speed)` so smoothing character is preserved at all speeds. Runs on real frame time (decoupled from simulation speed).
-
-## Support
-
-If this is useful to you, consider supporting on [Patreon](https://patreon.com/remrepo) -- it funds more free tools like this one.
 
 ## License
 
